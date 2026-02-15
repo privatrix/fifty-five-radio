@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Song } from './db';
 
-const STATE_FILE = path.join(process.cwd(), 'src/data/radio_state.json');
+const STATE_FILE = path.join(process.cwd(), 'radio_state.json'); // Moved out of src to avoid reload loops
 
 export interface RadioState {
     currentSongId: string;
@@ -13,6 +13,7 @@ export interface RadioState {
 export function getRadioState(): RadioState {
     try {
         if (!fs.existsSync(STATE_FILE)) {
+            console.log("Radio State File missing, returning default.");
             return { currentSongId: '', startedAt: 0 };
         }
         const data = fs.readFileSync(STATE_FILE, 'utf8');
@@ -26,6 +27,7 @@ export function getRadioState(): RadioState {
 export function saveRadioState(state: RadioState) {
     try {
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+        // console.log("State saved:", state.currentSongId, state.startedAt);
     } catch (error) {
         console.error("Error writing radio state:", error);
     }
