@@ -12,7 +12,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
     let state = getRadioState();
 
-    // Initialize if empty
+    // Initialize if empty or invalid
     if (!state.currentSongId) {
         state = {
             currentSongId: songs[0].id,
@@ -23,8 +23,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
     let currentSong = songs.find(s => s.id === state.currentSongId);
 
-    // If song deleted or not found, reset
+    // Safety: If song deleted or not found, reset to first song immediately
     if (!currentSong) {
+        console.log("Current song not found in DB, resetting to start.");
         state = {
             currentSongId: songs[0].id,
             startedAt: Date.now()
@@ -37,28 +38,28 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     const elapsed = (now - state.startedAt) / 1000; // seconds
 
     // Check if song finished
+    // Add a small buffer (1s) to ensure we don't switch TOO early if client clock is slightly ahead
+    // But we also want to switch *promptly*. 
+    // Let's strictly use server duration.
     if (elapsed >= currentSong.duration) {
-        // Advance track
-        // We might need to advance multiple times if we missed a lot, 
-        // but for now let's just go to next. 
-        // Logic: specific "next" is better than looping to fix giant gaps.
+        console.log(`Song ${currentSong.title} finished (Elapsed: ${elapsed.toFixed(1)}s / Duration: ${currentSong.duration}s). Advancing.`);
 
         state = advanceTrack(songs, state);
         currentSong = songs.find(s => s.id === state.currentSongId) || songs[0];
 
-        // Recalculate position (should be close to 0)
+        // Recalculate position for the NEW song
         const newElapsed = (Date.now() - state.startedAt) / 1000;
 
         return res.status(200).json({
             currentSong,
-            position: newElapsed,
+            position: Math.max(0, newElapsed), // Ensure no negative values
             timestamp: Date.now()
         });
     }
 
     return res.status(200).json({
         currentSong,
-        position: elapsed,
+        position: Math.max(0, elapsed),
         timestamp: Date.now()
     });
 }
