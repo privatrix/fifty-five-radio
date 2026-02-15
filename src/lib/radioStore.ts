@@ -12,6 +12,16 @@ declare global {
     var _radioStateCache: RadioState | undefined;
 }
 
+const LOG_FILE = path.join(process.cwd(), 'radio_debug.log');
+function logDebug(msg: string) {
+    try {
+        const timestamp = new Date().toISOString();
+        fs.appendFileSync(LOG_FILE, `[${timestamp}] ${msg}\n`);
+    } catch (e) {
+        // ignore
+    }
+}
+
 export interface RadioState {
     currentSongId: string;
     startedAt: number; // Unix timestamp in ms
@@ -26,15 +36,19 @@ export function getRadioState(): RadioState {
     try {
         if (!fs.existsSync(STATE_FILE)) {
             // Create if not exists
+            logDebug("State file missing, returning default.");
             return { currentSongId: '', startedAt: 0 };
         }
         const data = fs.readFileSync(STATE_FILE, 'utf8');
         const state = JSON.parse(data);
 
+        logDebug(`Loaded state from disk: ${JSON.stringify(state)}`);
+
         // Populate Cache
         global._radioStateCache = state;
         return state;
     } catch (error) {
+        logDebug(`Error reading state: ${error}`);
         console.error("Error reading radio state:", error);
         // Do NOT return default if we can help it, but for now we must.
         // If we fail to read, we risk resetting.
@@ -46,6 +60,7 @@ export function getRadioState(): RadioState {
 export function saveRadioState(state: RadioState) {
     // 1. Update Cache
     global._radioStateCache = state;
+    logDebug(`Saving state: ${JSON.stringify(state)}`);
 
     // 2. Persist to Disk (Async-ish safe)
     try {
@@ -55,6 +70,7 @@ export function saveRadioState(state: RadioState) {
         }
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
     } catch (error) {
+        logDebug(`Error writing state: ${error}`);
         console.error("Error writing radio state:", error);
     }
 }
