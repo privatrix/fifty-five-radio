@@ -3,7 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { Song } from './db';
 
-const STATE_FILE = path.join(process.cwd(), 'radio_state.json'); // Moved out of src to avoid reload loops
+// Store in .next to avoid watcher restart loop (temporary but effective for dev)
+// Ideally use a real database or a file outside project root.
+const STATE_FILE = path.join(process.cwd(), '.next/radio_state.json');
 
 export interface RadioState {
     currentSongId: string;
@@ -13,7 +15,7 @@ export interface RadioState {
 export function getRadioState(): RadioState {
     try {
         if (!fs.existsSync(STATE_FILE)) {
-            console.log("Radio State File missing, returning default.");
+            // Create if not exists (parent dir .next usually exists in running app)
             return { currentSongId: '', startedAt: 0 };
         }
         const data = fs.readFileSync(STATE_FILE, 'utf8');
@@ -26,8 +28,11 @@ export function getRadioState(): RadioState {
 
 export function saveRadioState(state: RadioState) {
     try {
+        const dir = path.dirname(STATE_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
-        // console.log("State saved:", state.currentSongId, state.startedAt);
     } catch (error) {
         console.error("Error writing radio state:", error);
     }
