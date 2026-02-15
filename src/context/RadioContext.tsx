@@ -85,10 +85,14 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             }
             // B. Same Track - Check Drift
             else if (soundRef.current) {
+                // Ignore drift if sound is still loading/buffering
+                if (soundRef.current.state() !== 'loaded') return;
+
                 const audioPos = soundRef.current.seek();
                 if (typeof audioPos === 'number') {
                     const drift = Math.abs(audioPos - state.position);
-                    if (drift > 2.5) {
+                    // 3.5s tolerance to be safer against network jitter
+                    if (drift > 3.5) {
                         console.log(`DRIFT FIX: Audio=${audioPos.toFixed(1)}s, Server=${state.position.toFixed(1)}s. Seeking.`);
                         soundRef.current.seek(state.position);
                     }
@@ -107,7 +111,18 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     // 2. Initial Load
     useEffect(() => {
         const init = async () => {
-            await refreshSongs();
+            // Parallel fetch for speed
+            const [songsData, syncData] = await Promise.all([
+                refreshSongs(),
+                fetchSync()
+            ]);
+
+            if (syncData && syncData.currentSong) {
+                setCurrentSong(syncData.currentSong);
+                setServerPosition(syncData.position);
+                setLastSyncTime(Date.now());
+            }
+
             setIsLoading(false);
         };
         init();
