@@ -74,15 +74,17 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                     playSong(state.currentSong, state.position);
                 }
                 setIsLoading(false);
-            };
+            }
+            setIsLoading(false);
+        };
 
-            initRadio();
+        initRadio();
 
-            return () => {
-                if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-                if (soundRef.current) soundRef.current.unload();
-            };
-        }, []);
+        return () => {
+            if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+            if (soundRef.current) soundRef.current.unload();
+        };
+    }, []);
 
     // Sync Interval via API
     useEffect(() => {
