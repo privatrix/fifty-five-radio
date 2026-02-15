@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Howl } from 'howler';
 import { Song } from '@/data/songs';
-import { getRadioState } from '@/lib/radioScheduler';
+// import { getRadioState } from '@/lib/radioScheduler'; // Removed local scheduler
 
 // Define a tighter sync threshold (seconds)
 const MAX_DRIFT = 3;
@@ -28,6 +28,7 @@ const RadioContext = createContext<RadioContextType | undefined>(undefined);
 export function RadioProvider({ children }: { children: React.ReactNode }) {
     const [songs, setSongs] = useState<Song[]>([]);
     const [currentSong, setCurrentSong] = useState<Song | null>(null);
+    const [songStartAt, setSongStartAt] = useState<number>(0); // Timestamp when current song started (according to server)
     const [liveSong, setLiveSong] = useState<Song | null>(null); // New state for actual live track
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLive, setIsLive] = useState(true);
@@ -71,6 +72,8 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 const state = await fetchSyncState();
                 if (state && state.currentSong) {
                     setLiveSong(state.currentSong);
+                    // Calculate start time: now - position
+                    setSongStartAt(Date.now() - (state.position * 1000));
                     playSong(state.currentSong, state.position);
                 }
                 setIsLoading(false);
@@ -100,6 +103,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             // 1. Song Change
             if (currentSong && state.currentSong.id !== currentSong.id) {
                 console.log(`Server Transition: ${currentSong.title} -> ${state.currentSong.title}`);
+                setSongStartAt(Date.now() - (state.position * 1000));
                 playSong(state.currentSong, state.position);
                 return;
             }
@@ -197,6 +201,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                     // Immediately fetch next state
                     fetchSyncState().then(state => {
                         if (state && state.currentSong && state.currentSong.id !== song.id) {
+                            setSongStartAt(Date.now() - (state.position * 1000));
                             playSong(state.currentSong, state.position);
                         } else {
                             console.log("Adding artificial delay/wait for server...");
@@ -234,11 +239,12 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         playSong(song, 0);
     };
 
-    const goLive = () => {
+    const goLive = async () => {
         setIsLive(true);
         setIsPlaying(true);
-        const state = getRadioState(songs);
-        if (state.currentSong) {
+        const state = await fetchSyncState();
+        if (state && state.currentSong) {
+            setSongStartAt(Date.now() - (state.position * 1000));
             playSong(state.currentSong, state.position);
         }
     };
@@ -257,22 +263,14 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 if (soundRef.current) soundRef.current.play();
                 setIsPlaying(true);
             } else {
-                // Resume Live
-                const state = getRadioState(songs);
-
-                if (!state.currentSong) return;
-
-                if (currentSong?.id !== state.currentSong.id) {
-                    playSong(state.currentSong, state.position);
-                } else {
-                    if (soundRef.current) {
-                        soundRef.current.seek(state.position);
-                        soundRef.current.play();
-                    } else {
-                        playSong(state.currentSong, state.position);
-                    }
+            } else {
+                // Resume Live - Use known state or fetch fresh
+                if (currentSong && isLive) {
+                    // Check if we decied to "Go Live" but were paused.
+                    // Just resume current sound if it matches liveSong?
+                    // Or better, re-sync to server to jump to *now*
+                    goLive();
                 }
-                setIsPlaying(true);
             }
         }
     };
@@ -287,8 +285,9 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     // Helper to get current playback time for UI
     const getCurrentTime = () => {
         if (isLive) {
-            const state = getRadioState(songs);
-            return state.position;
+            // Calculate based on when we started the song
+            const elapsed = (Date.now() - songStartAt) / 1000;
+            return Math.max(0, elapsed);
         } else {
             if (soundRef.current) {
                 return soundRef.current.seek() as number;
