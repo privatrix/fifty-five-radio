@@ -1,18 +1,17 @@
-
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { Song } from './db';
 
-// Store in .next to avoid watcher restart loop (temporary but effective for dev)
-// Ideally use a real database or a file outside project root.
-const STATE_FILE = path.join(process.cwd(), '.next/radio_state.json');
+// Use OS temp dir to guarantee write access and avoid project file watchers
+const STATE_FILE = path.join(os.tmpdir(), 'radio_state.json');
+const LOG_FILE = path.join(os.tmpdir(), 'radio_debug.log');
 
 // Global cache to prevent file locking collisions on Windows
 declare global {
     var _radioStateCache: RadioState | undefined;
 }
 
-const LOG_FILE = path.join(process.cwd(), 'radio_debug.log');
 function logDebug(msg: string) {
     try {
         const timestamp = new Date().toISOString();
@@ -36,19 +35,19 @@ export function getRadioState(): RadioState {
     try {
         if (!fs.existsSync(STATE_FILE)) {
             // Create if not exists
-            logDebug("State file missing, returning default.");
+            logDebug(`State file missing at ${STATE_FILE}, returning default.`);
             return { currentSongId: '', startedAt: 0 };
         }
         const data = fs.readFileSync(STATE_FILE, 'utf8');
         const state = JSON.parse(data);
 
-        logDebug(`Loaded state from disk: ${JSON.stringify(state)}`);
+        logDebug(`Loaded state from ${STATE_FILE}: ${JSON.stringify(state)}`);
 
         // Populate Cache
         global._radioStateCache = state;
         return state;
     } catch (error) {
-        logDebug(`Error reading state: ${error}`);
+        logDebug(`Error reading state from ${STATE_FILE}: ${error}`);
         console.error("Error reading radio state:", error);
         // Do NOT return default if we can help it, but for now we must.
         // If we fail to read, we risk resetting.
@@ -60,14 +59,11 @@ export function getRadioState(): RadioState {
 export function saveRadioState(state: RadioState) {
     // 1. Update Cache
     global._radioStateCache = state;
-    logDebug(`Saving state: ${JSON.stringify(state)}`);
+    logDebug(`Saving state to ${STATE_FILE}: ${JSON.stringify(state)}`);
 
     // 2. Persist to Disk (Async-ish safe)
     try {
-        const dir = path.dirname(STATE_FILE);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
+        // os.tmpdir() usually guarantees the directory exists and is writable.
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
     } catch (error) {
         logDebug(`Error writing state: ${error}`);
