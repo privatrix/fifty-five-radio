@@ -263,7 +263,6 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 if (soundRef.current) soundRef.current.play();
                 setIsPlaying(true);
             } else {
-            } else {
                 // Resume Live - Use known state or fetch fresh
                 if (currentSong && isLive) {
                     // Check if we decied to "Go Live" but were paused.
