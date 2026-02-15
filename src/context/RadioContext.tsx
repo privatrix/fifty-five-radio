@@ -1,10 +1,12 @@
 
+// Force rebuild
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Howl } from 'howler';
-import { Song } from '@/data/songs';
+import { Song } from '@/lib/db';
 
 interface RadioContextType {
     currentSong: Song | null;
+    liveSong: Song | null;
     isPlaying: boolean;
     togglePlay: () => void;
     volume: number;
@@ -14,6 +16,8 @@ interface RadioContextType {
     refreshSongs: () => Promise<void>;
     isLive: boolean; // Always true now for "Live Radio" concept, but keeping flag for potential expansion
     getCurrentTime: () => number;
+    playTrack: (song: Song) => void;
+    goLive: () => void;
 }
 
 const RadioContext = createContext<RadioContextType | undefined>(undefined);
