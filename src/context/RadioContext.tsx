@@ -50,74 +50,79 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const fetchSyncState = async () => {
+        try {
+            const res = await fetch('/api/radio/sync');
+            if (res.ok) {
+                const data = await res.json();
+                return data as { currentSong: Song, position: number, timestamp: number };
+            }
+        } catch (e) {
+            console.error("Sync failed", e);
+        }
+        return null;
+    };
+
     // Initialize Radio
     useEffect(() => {
         const initRadio = async () => {
             const fetchedSongs = await refreshSongs();
             if (fetchedSongs.length > 0) {
-                const state = getRadioState(fetchedSongs);
-                setLiveSong(state.currentSong); // Set live song initially
-                if (state.currentSong) {
+                const state = await fetchSyncState();
+                if (state && state.currentSong) {
+                    setLiveSong(state.currentSong);
                     playSong(state.currentSong, state.position);
                 }
-            }
-            setIsLoading(false);
-        };
+                setIsLoading(false);
+            };
 
-        initRadio();
+            initRadio();
 
-        return () => {
-            if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-            if (soundRef.current) soundRef.current.unload();
-        };
-    }, []);
+            return () => {
+                if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+                if (soundRef.current) soundRef.current.unload();
+            };
+        }, []);
 
-    // Sync Interval (Dependent on 'songs' state)
+    // Sync Interval via API
     useEffect(() => {
-        if (songs.length === 0) return;
+        if (!isLive) return;
 
-        syncIntervalRef.current = setInterval(() => {
-            const state = getRadioState(songs);
+        const syncLoop = async () => {
+            const state = await fetchSyncState();
 
-            // Only update liveSong if it actually changed to avoid unnecessary re-renders if strict equality checks are used downstream
+            if (!state || !state.currentSong) return;
+
             setLiveSong(prev => (prev?.id === state.currentSong?.id ? prev : state.currentSong));
 
-            if (!isLive) return;
-
-            if (!state.currentSong) return;
-
-            // If song changed (Natural transition in Live mode)
-            // We verify if the ID has changed. 
+            // 1. Song Change
             if (currentSong && state.currentSong.id !== currentSong.id) {
-                console.log(`Live Transition: ${currentSong.title} -> ${state.currentSong.title}`);
+                console.log(`Server Transition: ${currentSong.title} -> ${state.currentSong.title}`);
                 playSong(state.currentSong, state.position);
                 return;
             }
 
-            // Sync Drift
-            if (soundRef.current && isPlaying) {
+            // 2. Sync Drift (Only if song is same)
+            if (soundRef.current && isPlaying && !isSongFinishedRef.current) {
                 const currentSeek = soundRef.current.seek();
-
-                // Watchdog: If intended to be playing but not actually playing, AND we haven't finished the song naturally
-                // This prevents restarting a song that finished early (while waiting for schedule to catch up)
-                if (!soundRef.current.playing() && soundRef.current.state() === 'loaded' && !isSongFinishedRef.current) {
-                    console.log("Watchdog: Restarting stalled audio");
-                    soundRef.current.play();
-                }
-
-                // If drift is too large (> 2.5 seconds), seek
-                // We trust the scheduler more than the audio engine for "Live" time
-                if (typeof currentSeek === 'number' && !isSongFinishedRef.current && Math.abs(currentSeek - state.position) > 2.5) {
-                    console.log(`Syncing time: Player=${currentSeek.toFixed(1)} vs Schedule=${state.position.toFixed(1)}`);
+                // 3s tolerance
+                if (typeof currentSeek === 'number' && Math.abs(currentSeek - state.position) > 3) {
+                    console.log(`Syncing to Server: Player=${currentSeek.toFixed(1)} vs Server=${state.position.toFixed(1)}`);
                     soundRef.current.seek(state.position);
                 }
             }
-        }, 1000);
+        };
+
+        // Poll every 5s for metadata/schedule (or tighter if needed, but 5s is good for radio)
+        // Actually for "Live" feeling, 5s might be too slow to catch track changes EXACTLY.
+        // But we have local prediction (audio playing). 
+        // We only need the API to correct us.
+        syncIntervalRef.current = setInterval(syncLoop, 4000); // 4s polling
 
         return () => {
             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
         };
-    }, [songs, currentSong, isPlaying, isLive]);
+    }, [isLive, currentSong, isPlaying]);
 
 
     // Helper to advance to next track (Manual Mode)
@@ -186,24 +191,20 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 if (!isLive) {
                     playNext();
                 } else {
-                    // In Live mode
                     isSongFinishedRef.current = true;
-
-                    const state = getRadioState(songs);
-                    // Only immediately transition if the schedule says we should be elsewhere
-                    // If schedule says we are still in same song, we wait (effectively silence) for the next syncInterval tick to switch
-                    if (state.currentSong && state.currentSong.id !== song.id) {
-                        console.log("Song ended, seeking schedule:", state.currentSong.title, "@", state.position);
-                        playSong(state.currentSong, state.position);
-                    } else {
-                        console.log("Song finished early. Waiting for schedule...");
-                    }
+                    // Immediately fetch next state
+                    fetchSyncState().then(state => {
+                        if (state && state.currentSong && state.currentSong.id !== song.id) {
+                            playSong(state.currentSong, state.position);
+                        } else {
+                            console.log("Adding artificial delay/wait for server...");
+                        }
+                    });
                 }
             },
             onloaderror: (id, err) => {
                 console.error("Howler Load Error", id, err);
                 // Try to play next if current fails?
-                if (!isLive) setTimeout(playNext, 2000);
             },
             onplayerror: (id, err) => {
                 console.error("Howler Play Error", id, err);
