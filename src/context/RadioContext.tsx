@@ -31,6 +31,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     const [lastSyncTime, setLastSyncTime] = useState<number>(0);
 
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isLive, setIsLive] = useState(true); // Track if we are Syncing or playing Local
     const [volume, setVolume] = useState(0.8);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -69,7 +70,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
     // 1. Polling Loop (The Heartbeat)
     useEffect(() => {
         const tick = async () => {
-            if (!isPlaying) return;
+            if (!isPlaying || !isLive) return; // Stop syncing if paused OR in local mode
 
             const state = await fetchSync();
             if (!state || !state.currentSong) return;
@@ -106,7 +107,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         return () => {
             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
         };
-    }, [isPlaying, currentSong]);
+    }, [isPlaying, currentSong, isLive]); // Added isLive dep
 
     // 2. Initial Load
     useEffect(() => {
@@ -150,12 +151,12 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 // For now, trust the server.
             },
             onend: () => {
-                console.log("Song ended (locally). Waiting for server to switch track...");
-                // Do NOT playNext().
-                // Just wait. The polling loop will see the server switch and trigger playNewTrack.
-                // We can artificially trigger a poll call here for speed.
-                // syncIntervalRef.current... logic is hard to trigger from here without extracting 'tick'.
-                // But 3s silence is max worst case.
+                if (isLive) {
+                    console.log("Live Song ended (locally). Waiting for server...");
+                } else {
+                    console.log("Local Song ended.");
+                    setIsPlaying(false);
+                }
             }
         });
 
@@ -174,15 +175,23 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             if (soundRef.current) soundRef.current.pause();
         } else {
             // RESUME / START
-            // Always fetch fresh state first!
-            setIsLoading(true);
-            const state = await fetchSync();
-            setIsLoading(false);
+            if (isLive) {
+                // Always fetch fresh state first for LIVE!
+                setIsLoading(true);
+                const state = await fetchSync();
+                setIsLoading(false);
 
-            if (state && state.currentSong) {
-                // If we have a sound specifically for this song, maybe just resume/seek?
-                // For robustness: Just start fresh. It effectively resumes but ensures sync.
-                playNewTrack(state.currentSong, state.position);
+                if (state && state.currentSong) {
+                    playNewTrack(state.currentSong, state.position);
+                }
+            } else {
+                // Just resume local playback
+                if (soundRef.current) {
+                    soundRef.current.play();
+                    setIsPlaying(true);
+                } else if (currentSong) {
+                    playNewTrack(currentSong, 0); // Restart if lost
+                }
             }
         }
     };
@@ -199,6 +208,21 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         return serverPosition + timeSinceSync;
     };
 
+    const playTrack = (song: Song) => {
+        setIsLive(false); // Disable sync
+        playNewTrack(song, 0); // Play from start
+    };
+
+    const goLive = async () => {
+        setIsLive(true);
+        setIsLoading(true);
+        const state = await fetchSync();
+        setIsLoading(false);
+        if (state && state.currentSong) {
+            playNewTrack(state.currentSong, state.position);
+        }
+    };
+
     return (
         <RadioContext.Provider value={{
             currentSong,
@@ -210,9 +234,9 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             isLoading,
             songs,
             refreshSongs,
-            isLive: true,
-            playTrack: () => { }, // Disabled manual play
-            goLive: () => { }, // Always live
+            isLive, // Now dynamic
+            playTrack,
+            goLive,
             getCurrentTime
         }}>
             {children}

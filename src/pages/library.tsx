@@ -55,10 +55,11 @@ export default function Library() {
                         >
                             <div className="aspect-square relative overflow-hidden">
                                 <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                                {/* Overlay: Always visible on mobile/touch, Hover only on desktop (lg+) */}
+                                <div className="absolute inset-0 bg-black/60 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
                                     <button
                                         onClick={() => playTrack(song)}
-                                        className="p-3 bg-primary text-white rounded-full hover:scale-110 transition-transform"
+                                        className="p-3 bg-primary text-white rounded-full hover:scale-110 transition-transform active:scale-95"
                                         title="Ascultă Acum"
                                     >
                                         <Play size={24} fill="currentColor" />
