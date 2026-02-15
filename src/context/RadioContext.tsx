@@ -4,6 +4,9 @@ import { Howl } from 'howler';
 import { Song } from '@/data/songs';
 import { getRadioState } from '@/lib/radioScheduler';
 
+// Define a tighter sync threshold (seconds)
+const MAX_DRIFT = 3;
+
 interface RadioContextType {
     currentSong: Song | null;
     liveSong: Song | null;
@@ -74,29 +77,36 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
 
         syncIntervalRef.current = setInterval(() => {
             const state = getRadioState(songs);
-            setLiveSong(state.currentSong); // Always update live song
 
-            if (!isLive) return; // If manual, don't interrupt audio, just update liveSong state
+            // Only update liveSong if it actually changed to avoid unnecessary re-renders if strict equality checks are used downstream
+            setLiveSong(prev => (prev?.id === state.currentSong?.id ? prev : state.currentSong));
+
+            if (!isLive) return;
 
             if (!state.currentSong) return;
 
             // If song changed (Natural transition in Live mode)
+            // We verify if the ID has changed. 
             if (currentSong && state.currentSong.id !== currentSong.id) {
-                playSong(state.currentSong, 0);
+                console.log(`Live Transition: ${currentSong.title} -> ${state.currentSong.title}`);
+                playSong(state.currentSong, state.position);
+                return;
             }
 
-            // If drift is too large (> 5 seconds), seek
+            // Sync Drift
             if (soundRef.current && isPlaying) {
                 const currentSeek = soundRef.current.seek();
 
-                // Watchdog: If intended to be playing but not actually playing, restart
-                if (!soundRef.current.playing() && isLive) {
+                // Watchdog: If intended to be playing but not actually playing (and not loading), restart
+                if (!soundRef.current.playing() && soundRef.current.state() === 'loaded') {
                     console.log("Watchdog: Restarting stalled audio");
                     soundRef.current.play();
                 }
 
-                if (Math.abs(currentSeek - state.position) > 5) {
-                    console.log(`Syncing time for ${state.currentSong.title}: ${currentSeek} -> ${state.position}`);
+                // If drift is too large (> 2 seconds), seek
+                // We trust the scheduler more than the audio engine for "Live" time
+                if (typeof currentSeek === 'number' && Math.abs(currentSeek - state.position) > 2.5) {
+                    console.log(`Syncing time: Player=${currentSeek.toFixed(1)} vs Schedule=${state.position.toFixed(1)}`);
                     soundRef.current.seek(state.position);
                 }
             }
@@ -173,8 +183,12 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 if (!isLive) {
                     playNext();
                 } else {
-                    // In Live mode, if song ends, we rely on interval. 
-                    // But if we just finished, we might want to check schedule immediately.
+                    // In Live mode, immediately check schedule to transition
+                    const state = getRadioState(songs);
+                    if (state.currentSong) {
+                        console.log("Song ended, seeking schedule:", state.currentSong.title, "@", state.position);
+                        playSong(state.currentSong, state.position);
+                    }
                 }
             },
             onloaderror: (id, err) => {
