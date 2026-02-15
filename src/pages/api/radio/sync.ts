@@ -11,9 +11,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     let state = getRadioState();
+    console.log("DEBUG: Loaded State:", JSON.stringify(state));
 
     // Initialize if empty or invalid
     if (!state.currentSongId) {
+        console.log("DEBUG: State empty, initializing default.");
         state = {
             currentSongId: songs[0].id,
             startedAt: Date.now()
@@ -22,6 +24,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     let currentSong = songs.find(s => s.id === state.currentSongId);
+    console.log("DEBUG: Found Song:", currentSong ? currentSong.title : "None", "ID:", state.currentSongId);
 
     // Safety: If song deleted or not found, reset to first song immediately
     if (!currentSong) {
