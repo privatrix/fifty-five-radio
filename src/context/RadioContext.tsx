@@ -36,6 +36,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
 
     const soundRef = useRef<Howl | null>(null);
     const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const isSongFinishedRef = useRef(false);
 
     const refreshSongs = async () => {
         try {
@@ -97,15 +98,16 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             if (soundRef.current && isPlaying) {
                 const currentSeek = soundRef.current.seek();
 
-                // Watchdog: If intended to be playing but not actually playing (and not loading), restart
-                if (!soundRef.current.playing() && soundRef.current.state() === 'loaded') {
+                // Watchdog: If intended to be playing but not actually playing, AND we haven't finished the song naturally
+                // This prevents restarting a song that finished early (while waiting for schedule to catch up)
+                if (!soundRef.current.playing() && soundRef.current.state() === 'loaded' && !isSongFinishedRef.current) {
                     console.log("Watchdog: Restarting stalled audio");
                     soundRef.current.play();
                 }
 
-                // If drift is too large (> 2 seconds), seek
+                // If drift is too large (> 2.5 seconds), seek
                 // We trust the scheduler more than the audio engine for "Live" time
-                if (typeof currentSeek === 'number' && Math.abs(currentSeek - state.position) > 2.5) {
+                if (typeof currentSeek === 'number' && !isSongFinishedRef.current && Math.abs(currentSeek - state.position) > 2.5) {
                     console.log(`Syncing time: Player=${currentSeek.toFixed(1)} vs Schedule=${state.position.toFixed(1)}`);
                     soundRef.current.seek(state.position);
                 }
@@ -139,7 +141,8 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
             onload: async () => {
                 // Sync Duration with Reality
                 const realDuration = sound.duration();
-                if (realDuration && Math.abs(realDuration - song.duration) > 5) {
+                // Tightened tolerance to 2s to catch smaller gaps that cause loops
+                if (realDuration && Math.abs(realDuration - song.duration) > 2) {
                     console.log(`Syncing duration for ${song.title}: ${song.duration} -> ${realDuration}`);
 
                     // 1. Update Local State (Immediate fix for UI)
@@ -183,11 +186,17 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
                 if (!isLive) {
                     playNext();
                 } else {
-                    // In Live mode, immediately check schedule to transition
+                    // In Live mode
+                    isSongFinishedRef.current = true;
+
                     const state = getRadioState(songs);
-                    if (state.currentSong) {
+                    // Only immediately transition if the schedule says we should be elsewhere
+                    // If schedule says we are still in same song, we wait (effectively silence) for the next syncInterval tick to switch
+                    if (state.currentSong && state.currentSong.id !== song.id) {
                         console.log("Song ended, seeking schedule:", state.currentSong.title, "@", state.position);
                         playSong(state.currentSong, state.position);
+                    } else {
+                        console.log("Song finished early. Waiting for schedule...");
                     }
                 }
             },
@@ -209,6 +218,7 @@ export function RadioProvider({ children }: { children: React.ReactNode }) {
         sound.seek(startSeek);
         soundRef.current = sound;
         setCurrentSong(song);
+        isSongFinishedRef.current = false; // Reset finished flag
 
         if (isPlaying) {
             sound.play();
