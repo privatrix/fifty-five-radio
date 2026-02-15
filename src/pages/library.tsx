@@ -53,34 +53,39 @@ export default function Library() {
                             transition={{ delay: index * 0.05 }}
                             className="bg-white/5 border border-white/5 rounded-xl overflow-hidden hover:bg-white/10 transition-colors group"
                         >
-                            <div className="aspect-square relative overflow-hidden">
-                                <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                {/* Overlay: Always visible on mobile/touch, Hover only on desktop (lg+) */}
-                                <div className="absolute inset-0 bg-black/60 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                            <div className="aspect-square relative overflow-hidden group-hover:opacity-90 transition-opacity">
+                                <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+                            </div>
+
+                            <div className="p-4">
+                                <div className="flex items-start justify-between gap-2 mb-4">
+                                    <div className="overflow-hidden">
+                                        <h3 className="font-bold text-lg truncate text-white" title={song.title}>{song.title}</h3>
+                                        <p className="text-sm text-gray-400">{song.genre}</p>
+                                    </div>
+                                    <span className="text-xs text-gray-500 font-mono mt-1 shrink-0">
+                                        {Math.floor(song.duration / 60)}:{(song.duration % 60).toString().padStart(2, '0')}
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => playTrack(song)}
-                                        className="p-3 bg-primary text-white rounded-full hover:scale-110 transition-transform active:scale-95"
-                                        title="Ascultă Acum"
+                                        className="flex-1 bg-primary text-white py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-primary/90 hover:scale-[1.02] active:scale-95 transition-all font-medium text-sm"
                                     >
-                                        <Play size={24} fill="currentColor" />
+                                        <Play size={16} fill="currentColor" />
+                                        Ascultă
                                     </button>
+
                                     <a
                                         href={song.audioUrl}
                                         download
                                         target="_blank"
-                                        className="p-3 bg-white text-black rounded-full hover:scale-110 transition-transform"
-                                        title="Descarcă Piesa"
+                                        className="p-2.5 bg-white/5 text-gray-300 border border-white/10 rounded-lg hover:bg-white/10 hover:text-white transition-colors"
+                                        title="Descarcă"
                                     >
-                                        <Download size={24} />
+                                        <Download size={18} />
                                     </a>
-                                </div>
-                            </div>
-
-                            <div className="p-4">
-                                <h3 className="font-bold text-lg truncate text-white group-hover:text-primary transition-colors">{song.title}</h3>
-                                <div className="flex items-center justify-between mt-4 text-xs text-gray-500 uppercase tracking-widest">
-                                    <span>{song.genre}</span>
-                                    <span>{Math.floor(song.duration / 60)}:{(song.duration % 60).toString().padStart(2, '0')}</span>
                                 </div>
                             </div>
                         </motion.div>
