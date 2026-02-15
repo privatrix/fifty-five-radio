@@ -64,7 +64,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
             const title = fields.title?.[0] || existingSong.title;
             const genre = fields.genre?.[0] || existingSong.genre;
-            const duration = fields.duration?.[0] ? parseInt(fields.duration[0]) : existingSong.duration;
+            // distinct parsing for duration
+            const durationInput = fields.duration?.[0];
+            const duration = durationInput ? parseInt(durationInput) : existingSong.duration;
 
             // If a new cover is uploaded, delete old one and use new
             let coverUrl = existingSong.coverUrl;
